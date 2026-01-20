@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="he">
+<head>
+<meta charset="UTF-8">
+<title>ESP Candle Manager</title>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #111;
+  color: #eee;
+}
+.device {
+  border: 1px solid #444;
+  padding: 12px;
+  margin: 12px;
+}
+button {
+  margin: 4px;
+}
+input {
+  margin: 4px;
+}
+small {
+  color: #aaa;
+}
+</style>
+</head>
+<body>
+
+<h2>מכשירים מחוברים</h2>
+<div id="devices"></div>
+
+<script>
+let userInteracting = false;
+
+async function refresh() {
+  if (userInteracting) return;
+
+  const res = await fetch("/devices");
+  const devices = await res.json();
+  const root = document.getElementById("devices");
+
+  root.innerHTML = "";
+
+  for (const id in devices) {
+    const d = devices[id];
+
+    const div = document.createElement("div");
+    div.className = "device";
+
+    div.innerHTML = `
+      <b>${id}</b><br>
+      מצב: ${d.last_state}<br>
+
+      תאריך לידה:
+      <input type="date" value="${d.birth_date || ""}"><br>
+
+      תאריך פטירה:
+      <input type="date" value="${d.passing_date || ""}"><br>
+
+      <button>ON</button>
+      <button>OFF</button><br>
+
+      <small>נראה לאחרונה:
+        ${new Date(d.last_seen * 1000).toLocaleString()}
+      </small>
+    `;
+
+    const inputs = div.querySelectorAll("input");
+    const onBtn  = div.querySelectorAll("button")[0];
+    const offBtn = div.querySelectorAll("button")[1];
+
+    // ---- Birth date ----
+    inputs[0].onfocus = () => userInteracting = true;
+    inputs[0].onblur = async () => {
+      userInteracting = false;
+      await save(id, inputs[0].value, null);
+    };
+
+    // ---- Passing date ----
+    inputs[1].onfocus = () => userInteracting = true;
+    inputs[1].onblur = async () => {
+      userInteracting = false;
+      await save(id, null, inputs[1].value);
+    };
+
+    // ---- Control ----
+    onBtn.onclick  = () => cmd(id, "ON");
+    offBtn.onclick = () => cmd(id, "OFF");
+
+    root.appendChild(div);
+  }
+}
+
+async function save(id, birth, passing) {
+  const payload = { device_id: id };
+  if (birth !== null) payload.birth_date = birth;
+  if (passing !== null) payload.passing_date = passing;
+
+  await fetch("/update", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+async function cmd(id, c) {
+  await fetch("/control", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ device_id: id, cmd: c })
+  });
+}
+
+// refresh every second, safely
+setInterval(refresh, 1000);
+refresh();
+</script>
+
+</body>
+</html>
